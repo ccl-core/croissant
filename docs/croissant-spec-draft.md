@@ -19,11 +19,12 @@ Authors:
 - Michael Kuchnik (Meta),
 - Jos van der Velde (OpenML),
 - Joaquin Vanschoren (OpenML),
-- Luis Oala (Dotphoton),
+- Luis Oala (brickroad.network),
 - Steffen Vogler (Bayer),
 - Mubashara Akthar (King’s College London),
 - Nitisha Jain (King’s College London),
 - Slava Tykhonov (DANS-KNAW)
+- Joan Giner-Miguelez (Barcelona Supercomputing Center)
 
 ## Introduction
 
@@ -220,8 +221,13 @@ In addition, Croissant relies on the following namespaces:
   </tr>
   <tr>
     <td>wd</td>
-    <td>http://www.wikidata.org/wiki/</td>
+    <td>http://www.wikidata.org/entity/</td>
     <td>Wikidata namespace</td>
+  </tr>
+  <tr>
+    <td>wdt</td>
+    <td>http://www.wikidata.org/prop/direct/</td>
+    <td>Wikidata direct properties</td>
   </tr>
 </table>
 
@@ -312,7 +318,7 @@ In the rest of this document, we only describe the actual JSON-LD of Croissant m
 
 Croissant builds on the [schema.org/Dataset](http://schema.org/Dataset) vocabulary, which is widely adopted by datasets on the web. An introduction to describing datasets with this vocabulary can be found [here](https://developers.google.com/search/docs/appearance/structured-data/dataset).
 
-[Schema.org](http://Schema.org) properties are known to be very flexible in terms of the types of values they accept. We list below the main properties of the vocabulary and their expected type.To facilitate more consistent use of these properties we provide additional constraints on their usage in the context of Croissant datasets. We also specify cardinalities to clarify if a property can take one or many values.
+[Schema.org](http://Schema.org) properties are known to be very flexible in terms of the types of values they accept. We list below the main properties of the vocabulary and their expected type. To facilitate more consistent use of these properties we provide additional constraints on their usage in the context of Croissant datasets. We also specify cardinalities to clarify if a property can take one or many values.
 
 We organize [schema.org](http://schema.org) properties in three categories: Required, recommended and other properties. The properties starting with the symbol `@` are defined in JSON-LD, which is our RDF syntax of choice for Croissant.
 
@@ -501,7 +507,7 @@ Croissant modifies the meaning of one [schema.org](http://schema.org) property, 
   </tr>
 </table>
 
-The Croissant vocabulary also defines the following optional attributes:
+The Croissant vocabulary also defines the following optional dataset-level attributes:
 
 <table>
   <thead>
@@ -597,7 +603,7 @@ In Croissant, the `distribution` property contains one or more `FileObject` or `
 
 `FileObject` is the Croissant class used to represent individual files that are part of a dataset.
 
-`FileObject` is a general purpose class that inherits from [Schema.org](http://Schema.org) `CreativeWork`, and can be used to represent instances of more specific types of content like `DigitalDocument` and `MediaObject`.
+`FileObject` is a general purpose class that inherits from [Schema.org](http://Schema.org) `DataDownload`, and can be used to represent instances of more specific types of content like `DigitalDocument` and `MediaObject`.
 
 Most of the important properties needed to describe a `FileObject` are defined in the classes it inherits from:
 
@@ -657,9 +663,9 @@ In addition, `FileObject` defines the following property:
   </thead>
   <tr>
     <td>containedIn</td>
-    <td><a href="http://schema.org/Text">Text</a></td>
+    <td>FileObject or FileSet or DataSource</td>
     <td>MANY</td>
-    <td>Another <code>FileObject</code> or <code>FileSet</code> that this one is contained in, e.g., in the case of a file extracted from an archive. When this property is present, the <code>contentUrl</code> is evaluated as a relative path within the container object.</td>
+    <td>Another <code>FileObject</code> or <code>FileSet</code> that this one is contained in, e.g., in the case of a file extracted from an archive. When this property is present, the <code>contentUrl</code> is evaluated as a relative path within the container object. A <code>DataSource</code> can also be used in case the data needs to be filtered or transformed.</td>
   </tr>
 </table>
 
@@ -709,7 +715,7 @@ In many datasets, data comes in the form of collections of homogeneous files, su
 
 A `FileSet` is a set of files located in a container, which can be an archive `FileObject` or a "manifest" file. A FileSet may also specify inclusion / exclusion filters: these are file patterns that give the user flexibility to define which files should be part of the `FileSet`. For example, include patterns may refer to all images under one or more directories, which exclude patterns may be used to exclude specific images.
 
-`FileSet` extends `sc:Intangible`, and defines the following properties:
+`FileSet` also extends `sc:DataDownload`, and defines the following additional properties:
 
 <table>
   <thead>
@@ -720,9 +726,9 @@ A `FileSet` is a set of files located in a container, which can be an archive `F
   </thead>
   <tr>
     <td>containedIn</td>
-    <td>Reference</td>
+    <td>FileObject, FileSet or DataSource</td>
     <td>MANY</td>
-    <td>The source of data for the <code>FileSet</code>, e.g., an archive. If multiple values are provided for <code>containedIn</code>, then the union of their contents is taken (e.g., this can be used to combine files from multiple archives).</td>
+    <td>The source of data for the <code>FileSet</code>, e.g., an archive. If a <code>FileSet</code> or multiple values are provided for <code>containedIn</code>, then the union of their contents is taken (e.g., this can be used to combine files from multiple archives). A <code>DataSource</code> can also be used in case the data needs to be filtered or transformed.</td>
   </tr>
   <tr>
     <td>includes</td>
@@ -808,6 +814,28 @@ A zip file containing multiple `FileSet`s and `FileObject`s:
 }
 ```
 
+Finally, a `FileSet` extracted from a "manifest" file (which is also an archive) using a `DataSource` with an `unArchive` and a `readLines` transform:
+
+```json
+{
+  "@type": "cr:FileObject",
+  "@id": "manifest.zip",
+  "contentUrl": "http://example.com/manifest.zip",
+  "encodingFormat": "application/zip"
+},
+{
+  "@type": "cr:FileSet",
+  "@id": "my-files",
+  "containedIn": {
+    "@type": "cr:DataSource",
+    "fileObject": { "@id": "manifest.zip" },
+    "transform": { "unArchive": true, "readLines": true }
+  }
+}
+```
+
+While we specified `unArchive` explicitly in the last example, it is the default transform for `FileSet` when it is `containedIn` a `FileObject` of type `application/zip` or `application/gzip`.
+
 ## RecordSets
 
 While `FileObject` and `FileSet` describe the resources contained in a dataset, they do not tell us anything about the way the content within the resources is organized. This is the role of `RecordSet`.
@@ -886,8 +914,7 @@ A `Field` is part of a `RecordSet`. It may represent a column of a table, or a n
   <tr>
     <td>source</td>
     <td>
-      DataSource<br>
-      <a href="http://schema.org/URL">URL</a>
+      DataSource or FileObject or FileSet
     </td>
     <td>ONE</td>
     <td>The data source of the field. This will generally reference a <code>FileObject</code> or <code>FileSet</code>'s contents (e.g., a specific column of a table).</td>
@@ -898,6 +925,12 @@ A `Field` is part of a `RecordSet`. It may represent a column of a table, or a n
     <td>MANY</td>
     <td>The data type of the field, identified by the URI of the corresponding class. It could be either an atomic type (e.g, <code>sc:Integer</code>) or a semantic type (e.g., <code>sc:GeoLocation</code>).</td>
   </tr>
+    <tr>
+    <td>value</td>
+    <td>JSON</td>>
+    <td>ONE</td>
+    <td>An optional constant value for the field. Fields with values can be used to attach key/value pairs to a RecordSet. The value of a field can be atomic, for fields with a simple dataType, or it can be structured, e.g., if the field has subfields. For the latter case, a JSON string can be used to represent the value.</td>
+    </tr>
   <tr>
     <td>isArray</td>
     <td><a href="http://schema.org/Boolean">Boolean</a></td>
@@ -918,7 +951,7 @@ A `Field` is part of a `RecordSet`. It may represent a column of a table, or a n
   </tr>
   <tr>
     <td>references</td>
-    <td>Reference</td>
+    <td>Field</td>
     <td>MANY</td>
     <td>Another <code>Field</code> of another <code>RecordSet</code> that this field references. This is the equivalent of a foreign key reference in a relational database.</td>
   </tr>
@@ -930,7 +963,7 @@ A `Field` is part of a `RecordSet`. It may represent a column of a table, or a n
   </tr>
   <tr>
     <td>parentField</td>
-    <td>Reference</td>
+    <td>Field</td>
     <td>MANY</td>
     <td>A special case of <code>SubField</code> that should be hidden because it references a <code>Field</code> that already appears in the <code>RecordSet</code>.</td>
   </tr>
@@ -1005,16 +1038,23 @@ Let's see a simple example: The ratings `RecordSet` below defines the fields use
           "column": "timestamp"
         }
       }
+    },
+    {
+      "@type": "cr:Field",
+      "@id": "ratings/rating_scale",
+      "description": "The scale on which the rating is given.",
+      "dataType": "sc:Text",
+      "value": "1-5 stars"
     }
   ]
 }
 ```
 
-The ratings `RecordSet` above corresponds to a CSV table, declared elsewhere as a ratings table `FileObject`. Each field specifies as a source the corresponding column of the CSV file.
+The ratings `RecordSet` above corresponds to a CSV table, declared elsewhere as a ratings table `FileObject`. Each field specifies as a source the corresponding column of the CSV file. The last field has a constant value that specifies the rating scale.
 
 ### DataSource
 
-`RecordSet`s specify where to get their data via the `dataSource` property of Field. `DataSource` is the class describing the data that can be extracted from files to populate a `RecordSet`. This class should be used when the data coming from the source needs to be transformed or formatted to be included in the ML dataset; otherwise a simple `Reference` can be used instead to point to the source.
+`RecordSet`s specify where to get their data via the `source` property of Field. `DataSource` describes how to extract data from files to populate a `Field`. This class should be used when the data coming from the source needs to be transformed or formatted to be included in the ML dataset; otherwise a simple reference to the source (e.g., a `FileObject` or `FileSet`) can be used instead.
 
 `DataSource` is a subclassOf: [sc:Intangible](http://schema.org/Intangible) and defines the following properties:
 
@@ -1027,19 +1067,19 @@ The ratings `RecordSet` above corresponds to a CSV table, declared elsewhere as 
   </thead>
   <tr>
     <td>fileObject</td>
-    <td>Reference</td>
+    <td>FileObject</td>
     <td>ONE</td>
     <td>The name of the referenced <code>FileObject</code> source of the data.</td>
   </tr>
   <tr>
     <td>fileSet</td>
-    <td>Reference</td>
+    <td>FileSet</td>
     <td>ONE</td>
     <td>The name of the referenced <code>FileSet</code> source of the data.</td>
   </tr>
   <tr>
     <td>recordSet</td>
-    <td>Reference</td>
+    <td>RecordSet</td>
     <td>ONE</td>
     <td>The name of the referenced <code>RecordSet</code> source.</td>
   </tr>
@@ -1109,6 +1149,8 @@ Sometimes, not all the data from the source is needed, but only a subset. The `E
 Croissant supports a few simple transformations that can be applied on the source data:
 
 - delimiter: split a string into an array using the supplied character.
+- readLines: read the content of the file line by line.
+- unArchive: extract the content of the archive. True by default for archive file types (zip, tgz, etc.).
 - regex: A regular expression to parse the data.
 - jsonPath: A JSON path to evaluate on the (JSON) data source.
 
@@ -1232,111 +1274,23 @@ Other data types commonly used in ML datasets:
     <td>Describes a field containing the content of an image (pixels).</td>
   </tr>
   <tr>
-    <td><a href="http://mlcommons.org/schema/BoundingBox">cr:BoundingBox</a></td>
+    <td>cr:BoundingBox</td>
     <td>Describes the coordinates of a bounding box (4-number array). Refer to the section "ML-specific features > Bounding boxes".</td>
   </tr>
- <tr>
+  <tr>
     <td><a href="https://schema.org/VideoObject">sc:VideoObject</a></td>
     <td>Describes a field containing the content of a video file.</td>
   </tr>
   <tr>
-    <td><a href="http://mlcommons.org/schema/Split">cr:Split</a></td>
+    <td>cr:Split</td>
     <td>Describes a RecordSet used to divide data into multiple sets according to intended usage with regards to models. Refer to the section "ML-specific features > Splits".</td>
   </tr>
 </table>
 
 #### Using data types from other vocabularies
 
-Croissant datasets can use data types from other vocabularies, such as Wikidata. These may be supported by the tools consuming the data, but don’t need to. For example:
+See the section [Using external vocabularies with data](#using-external-vocabularies-with-data) for details on how to use data types from other vocabularies.
 
-<table>
-  <thead>
-    <th>dataType</th>
-    <th>Usage</th>
-  </thead>
-  <tr>
-    <td>
-      <a href="http://www.wikidata.org/wiki/Q48277">wd:Q48277</a><br>
-      (gender)
-    </td>
-    <td>Describes a Field or a RecordSet whose values are indicative of someone’s gender. This could be used for instance by RAI frameworks and tools to flag possible biases in the data. Values for this RecordSet can be associated with specific gender URLs (eg: <a href="http://www.wikidata.org/wiki/Q6581097">wd:Q6581097</a>, <a href="http://www.wikidata.org/wiki/Q6581072">wd:Q6581072</a>, etc.). Refer to the "Typed RecordSets > Enumerations" section for an example.</td>
-  </tr>
-</table>
-
-In the following example, `color_sample` is a field containing an image, but with no associated machine-readable semantics.
-
-```json
-{
-  "@id": "images/color_sample",
-  "@type": "cr:Field",
-  "dataType": "sc:ImageObject"
-}
-```
-
-In the following example, the `url` field is expected to be a URL, whose semantic type is [City](http://www.wikidata.org/wiki/Q515), so one will expect values of this field to be URLs referring to cities (e.g.: "<http://www.wikidata.org/wiki/Q90>").
-
-```json
-{
-  "@id": "cities/url",
-  "@type": "cr:Field",
-  "dataType": ["http://schema.org/URL", "http://www.wikidata.org/wiki/Q515"]
-}
-```
-
-#### Typing RecordSets
-
-As mentioned above, Croissant supports setting the `dataType` of an entire `RecordSet`. This means that the records it contains are instances of the corresponding data type. For example, if a `RecordSet` has the data type [sc:GeoCoordinates](http://schema.org/GeoCoordinates), then its records will be geopoints with a latitude and a longitude.
-
-More generally, when a `RecordSet`is assigned a `dataType`, some or all of its fields must be mapped to properties associated with the data type. This can be done in two ways:
-
-- Either the `@id` of the field has the name of the property as a suffix, e.g., a field with `@id` "cities/latitude" corresponds to the property "[sc:latitude](http://schema.org/latitude)" associated with the data type [sc:GeoCoordinates](http://schema.org/GeoCoordinates).
-- Or there is an explicit mapping specified on the Field, via the property `equivalentProperty`.
-
-When a field is mapped to a property, it can inherit the range type of that property (e.g., latitude and longitude can be or of type Text or Number). It may also specify a more restrictive type, as long as it doesn't contradict the range of the property (e.g., require the values of latitude and longitude to be of type Float).
-
-A cities `RecordSet` with fields implicitly mapped to latitude and longitude:
-
-```json
-{
-  "@id": "cities",
-  "@type": "cr:RecordSet",
-  "dataType": "sc:GeoCoordinates",
-  "field": [
-    {
-      "@id": "cities/latitude",
-      "@type": "cr:Field"
-    },
-    {
-      "@id": "cities/longitude",
-      "@type": "cr:Field"
-    }
-  ]
-}
-```
-
-A cities `RecordSet` with fields explicitly mapped to latitude and longitude:
-
-```json
-{
-  "@id": "cities",
-  "@type": "cr:RecordSet",
-  "dataType": "sc:GeoCoordinates",
-  "field": [
-    {
-      "@id": "cities/lat",
-      "@type": "cr:Field",
-      "equivalentProperty": "sc:latitude"
-    },
-    {
-      "@id": "cities/long",
-      "@type": "cr:Field",
-      "equivalentProperty": "sc:longitude"
-    }
-  ]
-}
-```
-
-Note that, just like for `Field`, a RecordSet might specify multiple `dataType`s, and have separate fields mapping to their respective properties. We will see below how this feature is used to specify ML-specific information such as splits.
 
 ### Embedding data
 
@@ -1525,7 +1479,7 @@ Annotations can also appear at the level of a RecordSet. A RecordSet-level annot
     { "@type": "cr:Field", "@id": "movies/title", ...},
     { "@type": "cr:Field", "@id": "movies/genre", ...}
   ],
-  "annotation" : {
+  "annotation": {
     "@type": "cr:Field", "@id": "movies/ratings", 
     "subField": [
       { "@type": "cr:Field", "@id": "movies/ratings/user_id", ...}, 
@@ -1574,7 +1528,157 @@ Croissant `RecordSet`s provide two mechanisms to represent hierarchical data:
 
 Note that the values of these fields may still come from a "flat" source, such as two separate columns of a table, as in the example above.
 
-Furthermore the field ids "gps_coordinates/latitude" and "gps_coordinates/longitude" are not arbitrary: they correspond to the "latitude" and "longitude" properties associated with the [sc:GeoCoordinates](http://schema.org/GeoCoordinates) type. This uses the same property mapping mechanism we introduced in Section [Typing RecordSets](#typing-recordsets).
+Furthermore the field ids "gps_coordinates/latitude" and "gps_coordinates/longitude" are not arbitrary: they correspond to the "latitude" and "longitude" properties associated with the [sc:GeoCoordinates](http://schema.org/GeoCoordinates) type. This uses the same property mapping mechanism we introduced in Section [RecordSet typing](#recordset-typing).
+
+## Using external vocabularies
+
+Croissant files can be enriched with properties from external vocabularies. This mechanism can be used to describe both dataset-level metadata and properties of the data itself, by adding external properties to `sc:Dataset`, `cr:RecordSet` or `cr:Field` definitions.
+
+To use an external vocabulary, a prefix for it must be defined in the `@context` block. This allows you to add properties from that vocabulary to your dataset description.
+
+For example, to use the PROV Ontology ([PROV-O](https://www.w3.org/TR/prov-o/)) for provenance information, you would first define a prefix for it in the `@context`. The following example shows how to add dataset-level provenance with `prov:wasGeneratedBy`, and field-level provenance with `prov:wasDerivedFrom`:
+
+```json
+{
+  "@context": {
+    "@vocab": "http://schema.org/",
+    "croissant": "http://mlcommons.org/croissant/",
+    "prov": "http://www.w3.org/ns/prov#"
+  },
+  "@type": ["sc:Dataset"],
+  "name": "My dataset",
+  "description": "My beautiful dataset.",
+  "url": "https://mlcommons.org",
+  "prov:wasGeneratedBy": {
+    "@type": "prov:Activity",
+    "prov:startedAtTime": "2023-01-01T00:00:00Z",
+    "prov:endedAtTime": "2023-01-01T01:00:00Z"
+  },
+  "distribution": [
+      {
+        "@type": ["cr:FileObject"],
+        "@id": "my-file-object",
+        "name": "my-file-object",
+        "contentUrl": "http://example.com/source-data.csv",
+        "encodingFormat": "text/csv",
+        "prov:wasDerivedFrom": "http://example.com/source-data"
+      }
+  ],
+  ...
+}
+```
+
+While you can use any vocabulary, it is up to the consumer of the Croissant file to interpret these external properties.
+
+### Using external vocabularies with data
+
+In addition to dataset-level properties, external vocabularies can be used to provide more semantic meaning to the data itself. There are three main ways to do this:
+
+#### Field typing
+
+You can assign a `dataType` from an external vocabulary to a `cr:Field`. This indicates that each value for that field is an instance of the specified type.
+
+In the following example, the `url` field is expected to be a URL, whose semantic type is City (http://www.wikidata.org/entity/Q515), so one will expect values of this field to be URLs referring to cities (e.g.: Paris is "<http://www.wikidata.org/entity/Q90>").
+
+```json
+{
+  "@id": "cities/url",
+  "@type": "cr:Field",
+  "dataType": ["http://schema.org/URL", "http://www.wikidata.org/entity/Q515"]
+}
+```
+
+#### RecordSet typing
+
+You can also associate entire records with classes from external vocabularies, and specific fields of records with properties applicable to those classes. This is useful for semantic mapping of data values in the dataset, and for adding semantic data annotations using standard vocabularies, e.g., to describe statistics about the data.
+
+Croissant supports setting the `dataType` of an entire `RecordSet`. This means that the records it contains are instances of the corresponding data type. For example, if a `RecordSet` has the data type [sc:GeoCoordinates](http://schema.org/GeoCoordinates), then its records will be geopoints with a latitude and a longitude.
+
+More generally, when a `RecordSet` is assigned a `dataType`, some or all of its fields must be mapped to properties associated with the data type. This can be done in two ways:
+
+- Either the `@id` of the field has the name of the property as a suffix, e.g., a field with `@id` "cities/latitude" corresponds to the property "[sc:latitude](http://schema.org/latitude)" associated with the data type [sc:GeoCoordinates](http://schema.org/GeoCoordinates).
+- Or there is an explicit mapping specified on the Field, via the property `equivalentProperty`.
+
+When a field is mapped to a property, it can inherit the range type of that property (e.g., latitude and longitude can be or of type Text or Number). It may also specify a more restrictive type, as long as it doesn't contradict the range of the property (e.g., require the values of latitude and longitude to be of type Float).
+
+The following example shows a `RecordSet` where each record represents a city, typed as both a `wd:Q515` (Wikidata City) and `sc:GeoCoordinates`. The fields of the `RecordSet` are mapped to the properties of these classes, using both explicit and implicit mapping:
+- The `cities/name` field corresponds to the `sc:name` property via implicit mapping
+- The `cities/population` and `cities/country` fields are mapped to `wdt:P1082` and `wdt:P17` explicitly
+- The `cities/latitude` and `cities/longitude` fields implicitly map to `sc:latitude` and `sc:longitude`.
+
+```json
+{
+  "@context": {
+    "@vocab": "http://schema.org/",
+    "croissant": "http://mlcommons.org/croissant/",
+    "wd": "http://www.wikidata.org/entity/",
+    "wdt": "http://www.wikidata.org/prop/direct/"
+  },
+  "@type": "sc:Dataset",
+  "name": "My Dataset",
+  "recordSet": [
+    {
+      "@type": "cr:RecordSet",
+      "@id": "cities",
+      "dataType": ["wd:Q515", "sc:GeoCoordinates"],
+      "field": [
+        {
+          "@type": "cr:Field",
+          "@id": "cities/name",
+          "dataType": "sc:Text",
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "cities/population",
+          "dataType": "sc:Integer",
+          "equivalentProperty": "wdt:P1082"
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "cities/country",
+          "dataType": "sc:Text",
+          "equivalentProperty": "wdt:P17"
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "cities/latitude",
+          "dataType": "sc:Float"
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "cities/longitude",
+          "dataType": "sc:Float"
+        }
+      ]
+    }
+  ]
+}
+```
+
+#### Data format for external entities
+
+When a `cr:Field`'s `dataType` is an entity from an external vocabulary, the corresponding data file should contain values that can be interpreted as those entities. For a `dataType` of `prov:Agent`, the data file might contain URLs that identify the agents.
+
+To keep the data files concise, you can define prefixes in the dataset's `@context` and use those prefixes in the data. For example, you could add an `ex-agent` prefix to the context:
+
+```json
+  "@context": {
+    "@vocab": "http://schema.org/",
+    "croissant": "http://mlcommons.org/croissant/",
+    "prov": "http://www.w3.org/ns/prov#",
+    "ex-agent": "http://example.com/agents/"
+  }
+```
+
+Then, the corresponding data file can use these prefixes to create CURIEs (Compact URIs), which are shorter and more readable:
+
+**`data.csv`**
+```csv
+agent
+"ex-agent:person1"
+"ex-agent:software-tool"
+```
+Here, a consumer of the Croissant file would expand `ex-agent:person1` to the full URL `http://example.com/agents/person1`.
 
 ## ML-specific Features
 
@@ -1650,6 +1754,11 @@ Finally, the following example shows an enumeration featuring the `url` field to
 
 ```json
 {
+  "@context": {
+    "@vocab": "http://schema.org/",
+    "croissant": "http://mlcommons.org/croissant/",
+    "wd": "http://www.wikidata.org/entity/"
+  },
   "@id": "genders",
   "@type": "cr:RecordSet",
   "dataType": ["sc:Enumeration", "wd:Q48277"],
@@ -1856,6 +1965,185 @@ Segmentation mask as an image:
 - `sc:GeoShape` describes segmentation masks as a sequence of coordinates (polygon).
 - `sc:ImageObject` describes segmentation masks as image overlays (with pixel = 0 outside of the mask and pixel = 1 inside the mask).
 
+## Responsible AI and Governance
+
+This section provides guidance on how to integrate external vocabularies with Croissant to address important Responsible AI use cases, such as provenance and data use restrictions.
+
+### Provenance Representation
+
+
+Tracking the provenance of a dataset is crucial for transparency, reproducibility, and responsible AI. It helps users understand where the data came from, how it has been modified over time, and who contributed to its creation. This is particularly important for datasets derived from other datasets, or those that have undergone significant transformations, such as filtering, augmentation, or annotation.
+
+
+
+Croissant recommends using the [W3C PROV Ontology (PROV-O)](https://www.w3.org/TR/prov-o/) to describe provenance. PROV-O provides a rich and standard vocabulary for describing the entities, activities, and agents involved in the lifecycle of data.
+
+To use PROV-O or other external vocabularies (like FOAF) in a Croissant dataset, you should first declare their namespace in the `@context`. Then, you can use properties from these vocabularies on any Croissant object, such as the Dataset itself, a `FileObject`, a `RecordSet`, or a `Field`.
+
+Key PROV-O relationships include:
+
+*   `prov:wasDerivedFrom`: Indicates that an entity (e.g., the dataset or a part of it) was derived from another entity.
+*   `prov:wasGeneratedBy`: Links an entity to the activity that generated it (e.g., a data cleaning process, a web crawl).
+*   `prov:wasAttributedTo`: Links an entity to the agent responsible for it (e.g., a person, organization, or software).
+
+
+
+![Croissant provenance](images/croissant-provenance.png 'Croissant provenance') 
+
+
+Provenance can be specified at multiple levels of granularity:
+
+**Dataset and Resource-level Provenance**
+
+You can describe the origin of the entire dataset. For example, if a dataset is a corrupted version of ImageNet:
+
+```json
+{
+  "@context": {
+    "@vocab": "http://schema.org/",
+    "cr": "http://mlcommons.org/croissant/",
+    "prov": "http://www.w3.org/ns/prov#",
+    "foaf": "http://xmlns.com/foaf/0.1/"
+  },
+  "@type": "sc:Dataset",
+  "name": "ImageNet-C",
+  "description": "A variant of ImageNet with applied corruptions.",
+  "prov:wasDerivedFrom": { "@id": "urn:dataset:ImageNet" },
+  "prov:wasGeneratedBy": {
+      "@type": "prov:Activity",
+      "prov:label": "Corruption Transformation"
+  }
+  // ... other dataset properties
+}
+```
+
+Similarly, you can describe the provenance of individual resources (`FileObject` or `FileSet`). For example, to indicate that a file was downloaded from a specific URL by a crawling process:
+
+```json
+{
+  "@type": "cr:FileObject",
+  "@id": "raw_data.csv",
+  "contentUrl": "https://example.com/data.csv",
+  "prov:wasGeneratedBy": {
+      "@type": "prov:Activity",
+      "prov:label": "Web Crawl 2023-10",
+      "prov:endedAtTime": "2023-10-01T12:00:00Z"
+  },
+  "prov:wasAttributedTo": {
+      "@type": "prov:Agent",
+      "prov:label": "Common Crawl Foundation"
+  }
+}
+```
+
+**RecordSet and Field-level Provenance**
+
+Provenance can also be attached to specific `RecordSet`s or `Field`s. This is useful when different parts of the dataset have different origins, or when you want to document the creation of specific annotations.
+
+For example, you can indicate that a set of labels was generated by a specific software agent:
+
+```json
+{
+  "@type": "cr:RecordSet",
+  "@id": "images_with_labels",
+  "field": [
+    {
+      "@type": "cr:Field",
+      "@id": "images_with_labels/image"
+    },
+    {
+      "@type": "cr:Field",
+      "@id": "images_with_labels/label",
+      "dataType": "sc:Text",
+      "prov:wasAttributedTo": {
+        "@type": "prov:Agent",
+        "prov:label": "SyntheticDataGenerator-v1.2"
+      },
+      "prov:wasGeneratedBy": {
+          "@type": "prov:Activity",
+          "prov:label": "Automated Labeling Process"
+      }
+    }
+  ]
+}
+```
+
+**Data-level Provenance**
+
+For the finest level of granularity, you can attach provenance information to individual data values. This is achieved using Croissant's annotation mechanism, where an annotation field is used to hold the provenance information for another field. By setting the `equivalentProperty` of the annotation field to a PROV-O property, you can define the relationship between the data and its provenance.
+
+For example, consider a dataset where each image is labeled by a different human annotator, and we want to capture the information about the annotator for each label. We can combine PROV-O and FOAF (Friend of a Friend) vocabularies to describe this. We can define an annotation field that represents the `prov:Person` (the annotator) and link it to the label field using `prov:wasAttributedTo`. We can then use FOAF properties to describe the person's attributes.
+
+```json
+{
+  "@type": "cr:RecordSet",
+  "@id": "labeled_images",
+  "field": [
+    {
+      "@type": "cr:Field",
+      "@id": "labeled_images/image_id"
+      // ... source definition
+    },
+    {
+      "@type": "cr:Field",
+      "@id": "labeled_images/label",
+      "dataType": ["sc:Text", "cr:Label"],
+      "source": {
+          "fileObject": { "@id": "annotations.csv" },
+          "extract": { "column": "label" }
+      },
+      "annotation": {
+        "@type": "cr:Field",
+        "@id": "labeled_images/label/annotator",
+        "description": "The annotator who created the label.",
+        "dataType": ["prov:Person", "foaf:Person"],
+        "equivalentProperty": "prov:wasAttributedTo",
+        "subField": [
+             {
+                 "@type": "cr:Field",
+                 "@id": "labeled_images/label/annotator/id",
+                 "source": {
+                     "fileObject": { "@id": "annotations.csv" },
+                     "extract": { "column": "annotator_id" }
+                 }
+             },
+             {
+                 "@type": "cr:Field",
+                 "@id": "labeled_images/label/annotator/gender",
+                 "description": "Gender of the annotator.",
+                 "dataType": "sc:Text",
+                 "equivalentProperty": "foaf:gender",
+                 "source": {
+                     "fileObject": { "@id": "annotations.csv" },
+                     "extract": { "column": "annotator_gender" }
+                 }
+             },
+             {
+                 "@type": "cr:Field",
+                 "@id": "labeled_images/label/annotator/age",
+                 "description": "Age of the annotator.",
+                 "dataType": "sc:Integer",
+                 "equivalentProperty": "foaf:age",
+                 "source": {
+                     "fileObject": { "@id": "annotations.csv" },
+                     "extract": { "column": "annotator_age" }
+                 }
+             }
+        ]
+      }
+    }
+  ]
+}
+```
+
+In this example, the `labeled_images/label` field has an annotation `labeled_images/label/annotator`. The `equivalentProperty` "prov:wasAttributedTo" on the annotation field indicates that each label is attributed to the corresponding person. The person's details (id, gender, age) are pulled from the same source file (`annotations.csv`) on a row-by-row basis. The `gender` and `age` fields are mapped to their corresponding FOAF properties, `foaf:gender` and `foaf:age`, via `equivalentProperty`.
+
+By leveraging external vocabularies like PROV-O and FOAF, Croissant enables a standardized and machine-readable way to capture the rich history and context of ML datasets, supporting better trust and understanding.
+
+### Data Use Restrictions
+
+TODO: Add guidance on representing data use restrictions.
+
 ## Appendix 1: JSON-LD context
 
 ```json
@@ -1870,6 +2158,7 @@ Segmentation mask as an image:
     "citeAs": "cr:citeAs",
     "column": "cr:column",
     "conformsTo": "dct:conformsTo",
+    "containedIn": "cr:containedIn",
     "data": {
       "@id": "cr:data",
       "@type": "@json"

@@ -4,9 +4,11 @@ from rdflib.namespace import SDO
 
 from mlcroissant._src.core import constants
 from mlcroissant._src.core import dataclasses as mlc_dataclasses
+from mlcroissant._src.core.context import CroissantVersion
 from mlcroissant._src.core.uuid import formatted_uuid_to_json
-from mlcroissant._src.core.uuid import uuid_from_jsonld
 from mlcroissant._src.structure_graph.base_node import Node
+from mlcroissant._src.structure_graph.nodes.file_object import _contained_in_from_jsonld
+from mlcroissant._src.structure_graph.nodes.source import Source
 
 
 @mlc_dataclasses.dataclass
@@ -15,7 +17,7 @@ class FileSet(Node):
 
     JSONLD_TYPE = constants.SCHEMA_ORG_FILE_SET
 
-    contained_in: list[str] | None = mlc_dataclasses.jsonld_field(
+    contained_in: list[str | Source] | None = mlc_dataclasses.jsonld_field(
         cardinality="MANY",
         default_factory=list,
         description=(
@@ -24,11 +26,16 @@ class FileSet(Node):
             " the contentUrl is evaluated as a relative path within the container"
             " object"
         ),
-        from_jsonld=lambda _, contained_in: uuid_from_jsonld(contained_in),
+        from_jsonld=_contained_in_from_jsonld,
         to_jsonld=lambda ctx, contained_in: [
-            formatted_uuid_to_json(ctx, uuid) for uuid in contained_in
+            formatted_uuid_to_json(ctx, c) if isinstance(c, str) else c.to_json()
+            for c in contained_in
         ],
-        url=SDO.containedIn,
+        url=lambda ctx: (
+            SDO.containedIn
+            if not ctx.is_v1_1()
+            else constants.ML_COMMONS(ctx).containedIn
+        ),
     )
     description: str | dict[str, str] | None = mlc_dataclasses.jsonld_field(
         cardinality="LANGUAGE-TAGGED",
@@ -80,6 +87,8 @@ class FileSet(Node):
     def __post_init__(self):
         """Checks arguments of the node."""
         Node.__post_init__(self)
+        if self.contained_in_v1_1:
+            self.contained_in = self.contained_in_v1_1
         uuid_field = "name" if self.ctx.is_v0() else "id"
         self.validate_name()
         self.assert_has_mandatory_properties("includes", "encoding_formats", uuid_field)
